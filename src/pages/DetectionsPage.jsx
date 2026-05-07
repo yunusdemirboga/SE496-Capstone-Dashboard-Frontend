@@ -12,18 +12,24 @@ export default function DetectionsPage() {
 
   const [page, setPage] = useState(0)
   const [droneDetected, setDroneDetected] = useState(undefined)
+  const [lastHourOnly, setLastHourOnly] = useState(false)
   const navigate = useNavigate()
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['detections', page, droneDetected],
-    queryFn: () =>
-      api.get('/detections/', {
+    queryKey: ['detections', page, droneDetected, lastHourOnly],
+    queryFn: () => {
+      const fromDate = lastHourOnly
+        ? new Date(Date.now() - 60 * 60 * 1000).toISOString()
+        : undefined
+      return api.get('/detections/', {
         params: {
           limit: LIMIT,
           offset: page * LIMIT,
           ...(droneDetected !== undefined && { drone_detected: droneDetected }),
+          ...(fromDate && { from_date: fromDate }),
         },
-      }).then((r) => r.data),
+      }).then((r) => r.data)
+    },
   })
 
   const totalPages = Math.ceil((data?.total ?? 0) / LIMIT)
@@ -42,7 +48,7 @@ export default function DetectionsPage() {
         </div>
 
         {/* Filter pills */}
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {[
             { label: 'All', value: undefined },
             { label: 'Detected', value: true },
@@ -66,6 +72,22 @@ export default function DetectionsPage() {
               {label}
             </button>
           ))}
+          <button
+            onClick={() => { setLastHourOnly((v) => !v); setPage(0) }}
+            style={{
+              padding: '0.55rem 1.1rem',
+              borderRadius: '999px',
+              fontSize: '0.95rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              border: 'none',
+              background: lastHourOnly ? '#ff9500' : '#e5e5ea',
+              color: lastHourOnly ? '#ffffff' : '#3a3a3c',
+              transition: 'all 0.15s',
+            }}
+          >
+            Last Hour
+          </button>
         </div>
       </div>
 
