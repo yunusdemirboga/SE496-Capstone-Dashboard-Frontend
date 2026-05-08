@@ -36,10 +36,22 @@ export default function LiveViewModal({ onClose }) {
       }
     }
 
-    // Attach incoming stream to the video element
+    // Fix 1: prefer H264 to reduce decode latency
+    const preferH264 = (transceiver) => {
+      const { codecs } = RTCRtpReceiver.getCapabilities('video')
+      const h264 = codecs.filter(c => c.mimeType === 'video/H264')
+      const rest = codecs.filter(c => c.mimeType !== 'video/H264')
+      transceiver.setCodecPreferences([...h264, ...rest])
+    }
+
+    // Fix 2+3: set srcObject then call play() immediately to minimize buffering
     pc.ontrack = (e) => {
+      preferH264(e.transceiver)
       if (videoRef.current) {
         videoRef.current.srcObject = e.streams[0]
+        videoRef.current.playsInline = true
+        videoRef.current.muted = true
+        videoRef.current.play().catch(() => {})
         setStatus('live')
       }
     }
