@@ -1,14 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 
-const WS_URL   = 'wss://se496-capstone-dashboard-backend.onrender.com/ws/webrtc/viewer'
-const STUN_URL = 'stun:stun.l.google.com:19302'
+const WS_URL = 'wss://se496-capstone-dashboard-backend.onrender.com/ws/webrtc/viewer'
+
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turns:openrelay.metered.ca:443',
+    ],
+    username:   'openrelayproject',
+    credential: 'openrelayproject',
+  },
+]
 
 const STATUS = {
-  connecting: { label: 'Connecting...',        color: '#ff9f0a' },
-  waiting:    { label: 'Waiting for Jetson...', color: '#ff9f0a' },
-  live:       { label: 'Live',                  color: '#34c759' },
-  ended:      { label: 'Stream ended',          color: '#ff3b30' },
-  unavailable:{ label: 'Stream unavailable',    color: '#ff3b30' },
+  connecting:   { label: 'Connecting...',        color: '#ff9f0a' },
+  waiting:      { label: 'Waiting for Jetson...', color: '#ff9f0a' },
+  live:         { label: 'Live',                  color: '#34c759' },
+  ended:        { label: 'Stream ended',          color: '#ff3b30' },
+  unavailable:  { label: 'Stream unavailable',    color: '#ff3b30' },
+  no_producer:  { label: 'Jetson not connected',  color: '#ff3b30' },
 }
 
 export default function LiveViewModal({ onClose }) {
@@ -21,7 +35,7 @@ export default function LiveViewModal({ onClose }) {
     const ws = new WebSocket(WS_URL)
     wsRef.current = ws
 
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_URL }] })
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
     pcRef.current = pc
 
     // Send our ICE candidates to the remote peer via signaling
@@ -56,10 +70,11 @@ export default function LiveViewModal({ onClose }) {
       }
     }
 
-    pc.onconnectionstatechange = () => {
-      const s = pc.connectionState
-      if (s === 'disconnected' || s === 'failed' || s === 'closed') {
+    // Only trigger on true failure — 'disconnected' is transient and can recover
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed') {
         setStatus('ended')
+        pc.close()
       }
     }
 
@@ -68,6 +83,11 @@ export default function LiveViewModal({ onClose }) {
     ws.onmessage = async (event) => {
       let msg
       try { msg = JSON.parse(event.data) } catch { return }
+
+      if (msg.type === 'no_producer') {
+        setStatus('no_producer')
+        return
+      }
 
       if (msg.type === 'offer') {
         await pc.setRemoteDescription({ type: msg.sdpType ?? 'offer', sdp: msg.sdp })
