@@ -1,37 +1,89 @@
 import { useEffect, useRef, useState } from 'react'
 
-const WS_URL = 'wss://se496-capstone-dashboard-backend.onrender.com/ws/stream/viewer'
+const WS_URL   = 'wss://se496-capstone-dashboard-backend.onrender.com/ws/webrtc/viewer'
+const STUN_URL = 'stun:stun.l.google.com:19302'
 
 const STATUS = {
-  connecting: { label: 'Connecting...', color: '#ff9f0a' },
-  waiting:    { label: 'Waiting for stream...', color: '#ff9f0a' },
-  streaming:  { label: 'Live', color: '#34c759' },
-  unavailable:{ label: 'Stream unavailable', color: '#ff3b30' },
+  connecting: { label: 'Connecting...',        color: '#ff9f0a' },
+  waiting:    { label: 'Waiting for Jetson...', color: '#ff9f0a' },
+  live:       { label: 'Live',                  color: '#34c759' },
+  ended:      { label: 'Stream ended',          color: '#ff3b30' },
+  unavailable:{ label: 'Stream unavailable',    color: '#ff3b30' },
 }
 
 export default function LiveViewModal({ onClose }) {
-  const imgRef = useRef(null)
+  const videoRef = useRef(null)
+  const wsRef    = useRef(null)
+  const pcRef    = useRef(null)
   const [status, setStatus] = useState('connecting')
 
   useEffect(() => {
     const ws = new WebSocket(WS_URL)
+    wsRef.current = ws
+
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_URL }] })
+    pcRef.current = pc
+
+    // Send our ICE candidates to the remote peer via signaling
+    pc.onicecandidate = (e) => {
+      if (e.candidate && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type:        'ice-candidate',
+          candidate:   e.candidate.candidate,
+          sdpMid:      e.candidate.sdpMid,
+          sdpMLineIndex: e.candidate.sdpMLineIndex,
+        }))
+      }
+    }
+
+    // Attach incoming stream to the video element
+    pc.ontrack = (e) => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = e.streams[0]
+        setStatus('live')
+      }
+    }
+
+    pc.onconnectionstatechange = () => {
+      const s = pc.connectionState
+      if (s === 'disconnected' || s === 'failed' || s === 'closed') {
+        setStatus('ended')
+      }
+    }
 
     ws.onopen = () => setStatus('waiting')
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data)
-        if (msg.type === 'frame' && imgRef.current) {
-          imgRef.current.src = `data:image/jpeg;base64,${msg.data}`
-          setStatus('streaming')
-        }
-      } catch {}
+    ws.onmessage = async (event) => {
+      let msg
+      try { msg = JSON.parse(event.data) } catch { return }
+
+      if (msg.type === 'offer') {
+        await pc.setRemoteDescription({ type: msg.sdpType ?? 'offer', sdp: msg.sdp })
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        ws.send(JSON.stringify({
+          type:    'answer',
+          sdp:     pc.localDescription.sdp,
+          sdpType: pc.localDescription.type,
+        }))
+      } else if (msg.type === 'ice-candidate') {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate({
+            candidate:     msg.candidate,
+            sdpMid:        msg.sdpMid,
+            sdpMLineIndex: msg.sdpMLineIndex,
+          }))
+        } catch {}
+      }
     }
 
     ws.onerror = () => setStatus('unavailable')
-    ws.onclose = (e) => { if (e.code !== 1000) setStatus('unavailable') }
+    ws.onclose = (e) => { if (e.code !== 1000) setStatus('ended') }
 
-    return () => ws.close(1000)
+    return () => {
+      pc.close()
+      ws.close(1000)
+    }
   }, [])
 
   useEffect(() => {
@@ -41,7 +93,8 @@ export default function LiveViewModal({ onClose }) {
   }, [onClose])
 
   const { label, color } = STATUS[status]
-  const isStreaming = status === 'streaming'
+  const isLive = status === 'live'
+  const isError = status === 'ended' || status === 'unavailable'
 
   return (
     <div
@@ -59,7 +112,6 @@ export default function LiveViewModal({ onClose }) {
       }}
     >
       <div style={{
-        position: 'relative',
         width: '90vw',
         maxWidth: '1100px',
         background: '#1c1c1e',
@@ -90,7 +142,7 @@ export default function LiveViewModal({ onClose }) {
               alignItems: 'center',
               gap: '0.35rem',
             }}>
-              {isStreaming && (
+              {isLive && (
                 <span style={{
                   width: '7px',
                   height: '7px',
@@ -126,35 +178,38 @@ export default function LiveViewModal({ onClose }) {
           </button>
         </div>
 
-        {/* Stream area */}
+        {/* Video area */}
         <div style={{
           width: '100%',
           aspectRatio: '16/9',
           background: '#000000',
+          position: 'relative',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-          <img
-            ref={imgRef}
-            alt="Live camera feed"
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
             style={{
               width: '100%',
               height: '100%',
               objectFit: 'contain',
-              display: isStreaming ? 'block' : 'none',
+              display: isLive ? 'block' : 'none',
             }}
           />
 
-          {!isStreaming && (
+          {!isLive && (
             <div style={{ textAlign: 'center', color: '#aeaeb2' }}>
               <div style={{ fontSize: '2.8rem', marginBottom: '0.75rem' }}>
-                {status === 'unavailable' ? '⚠️' : '📡'}
+                {isError ? '⚠️' : '📡'}
               </div>
               <p style={{ margin: 0, fontSize: '1rem', fontWeight: 500, color }}>
                 {label}
               </p>
-              {status !== 'unavailable' && (
+              {!isError && (
                 <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem', color: '#636366' }}>
                   Waiting for Jetson to connect…
                 </p>
