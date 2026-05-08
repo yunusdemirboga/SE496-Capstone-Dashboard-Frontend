@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
+import LiveViewModal from './LiveViewModal'
 
 export default function Navbar() {
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
+  const [showLive, setShowLive] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -11,42 +14,69 @@ export default function Navbar() {
   }
 
   return (
-    <nav style={{
-      position: 'sticky',
-      top: 0,
-      zIndex: 100,
-      background: 'rgba(242, 242, 247, 0.85)',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      borderBottom: '1px solid rgba(0,0,0,0.08)',
-      padding: '0 1.75rem',
-      height: '68px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-        <span style={{ fontWeight: 700, fontSize: '1.2rem', color: '#1c1c1e', letterSpacing: '-0.03em' }}>
-          UAV Detection
-        </span>
-        <div style={{ display: 'flex', gap: '0.25rem' }}>
-          <NavLink to="/detections">Detections</NavLink>
-          <NavLink to="/base-stations">Base Stations</NavLink>
-        </div>
-      </div>
-      <button onClick={handleLogout} style={{
-        padding: '0.5rem 1.1rem',
-        fontSize: '0.95rem',
-        background: 'transparent',
-        color: '#8e8e93',
-        border: '1.5px solid #d1d1d6',
-        borderRadius: '10px',
-        cursor: 'pointer',
-        fontWeight: 500,
+    <>
+      <nav style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        background: 'rgba(242, 242, 247, 0.85)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(0,0,0,0.08)',
+        padding: '0 1.75rem',
+        height: '68px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
       }}>
-        Logout
-      </button>
-    </nav>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+          <span style={{ fontWeight: 700, fontSize: '1.2rem', color: '#1c1c1e', letterSpacing: '-0.03em' }}>
+            UAV Detection
+          </span>
+          <div style={{ display: 'flex', gap: '0.25rem' }}>
+            <NavLink to="/detections">Detections</NavLink>
+            <NavLink to="/base-stations">Base Stations</NavLink>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button
+            onClick={() => setShowLive(true)}
+            style={{
+              padding: '0.5rem 1.1rem',
+              fontSize: '0.95rem',
+              background: '#ff3b30',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+            }}
+          >
+            <span style={{ fontSize: '0.6rem', lineHeight: 1 }}>●</span>
+            Live View
+          </button>
+
+          <button onClick={handleLogout} style={{
+            padding: '0.5rem 1.1rem',
+            fontSize: '0.95rem',
+            background: 'transparent',
+            color: '#8e8e93',
+            border: '1.5px solid #d1d1d6',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontWeight: 500,
+          }}>
+            Logout
+          </button>
+        </div>
+      </nav>
+
+      {showLive && <LiveViewModal onClose={() => setShowLive(false)} />}
+    </>
   )
 }
 
